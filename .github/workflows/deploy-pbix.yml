@@ -1,0 +1,148 @@
+name: Deploy PBIX Reports
+
+on:
+  push:
+    branches: [main, dev, test]
+    paths:
+      - 'reports/**/*.pbix'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (dev, test, prod)'
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+        default: dev
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-pbix:
+    name: Deploy PBIX to ${{ steps.env.outputs.target || 'Power BI' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+          fetch-depth: 2
+
+      - name: Determine target environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            TARGET="${{ inputs.environment }}"
+          elif [ "${{ github.ref }}" == "refs/heads/test" ]; then
+            TARGET="test"
+          else
+            # main and dev branches both deploy to dev by default
+            TARGET="dev"
+          fi
+          echo "target=$TARGET" >> $GITHUB_OUTPUT
+          echo "🎯 Target environment: $TARGET"
+
+      - name: Authenticate to Microsoft Entra ID
+        id: auth
+        run: |
+          # Acquire access token using client credentials flow
+          TOKEN_RESPONSE=$(curl -s -X POST \
+            "https://login.microsoftonline.com/${{ secrets.AZURE_TENANT_ID }}/oauth2/v2.0/token" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "client_id=${{ secrets.AZURE_CLIENT_ID }}" \
+            -d "client_secret=${{ secrets.AZURE_CLIENT_SECRET }}" \
+            -d "scope=https://analysis.windows.net/powerbi/api/.default" \
+            -d "grant_type=client_credentials")
+
+          ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
+
+          if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" == "null" ]; then
+            echo "❌ Failed to acquire access token"
+            echo "$TOKEN_RESPONSE" | jq '.error_description // .' 2>/dev/null
+            exit 1
+          fi
+
+          echo "✅ Access token acquired"
+          echo "::add-mask::$ACCESS_TOKEN"
+          echo "token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Find PBIX files to deploy
+        id: files
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            # Deploy all .pbix files in reports/
+            FILES=$(find reports/ -name "*.pbix" -type f 2>/dev/null || true)
+          else
+            # Deploy only changed .pbix files
+            FILES=$(git diff --name-only --diff-filter=ACM HEAD~1 HEAD -- 'reports/**/*.pbix' 2>/dev/null || true)
+          fi
+
+          if [ -z "$FILES" ]; then
+            echo "⚠️  No .pbix files found to deploy"
+            echo "found=false" >> $GITHUB_OUTPUT
+          else
+            echo "📋 Files to deploy:"
+            echo "$FILES"
+            echo "found=true" >> $GITHUB_OUTPUT
+            # Store files as newline-separated list
+            echo "list<<EOF" >> $GITHUB_OUTPUT
+            echo "$FILES" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy PBIX files
+        if: steps.files.outputs.found == 'true'
+        env:
+          POWERBI_WORKSPACE_ID: ${{ secrets[format('POWERBI_WORKSPACE_ID_{0}', steps.env.outputs.target)] }}
+          ACCESS_TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          chmod +x scripts/import-pbix.sh
+
+          DEPLOY_COUNT=0
+          FAIL_COUNT=0
+
+          echo "${{ steps.files.outputs.list }}" | while IFS= read -r pbix_file; do
+            if [ -n "$pbix_file" ]; then
+              echo ""
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "📄 Deploying: $pbix_file"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+              if ./scripts/import-pbix.sh "$pbix_file" "$POWERBI_WORKSPACE_ID" "$ACCESS_TOKEN"; then
+                DEPLOY_COUNT=$((DEPLOY_COUNT + 1))
+              else
+                FAIL_COUNT=$((FAIL_COUNT + 1))
+                echo "⚠️  Failed to deploy: $pbix_file"
+              fi
+            fi
+          done
+
+          echo ""
+          echo "📊 Deployment summary: $DEPLOY_COUNT succeeded, $FAIL_COUNT failed"
+
+          if [ "$FAIL_COUNT" -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "## 📊 PBIX Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ steps.env.outputs.target }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Files" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.files.outputs.found }}" == "true" ]; then
+            echo '${{ steps.files.outputs.list }}' | while IFS= read -r f; do
+              [ -n "$f" ] && echo "- \`$f\`" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "_No .pbix files detected for deployment._" >> $GITHUB_STEP_SUMMARY
+          fi

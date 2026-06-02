@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PBIX Deployment Automation — Complete Workflow Breakdown</title>
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const theme =
+        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #16a34a;
+      --cp-danger: #dc2626;
+      --cp-warning: #f59e0b;
+      --cp-link: #0078d4;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+      --cp-accent: #fd8ea1;
+      --cp-accent-hover: #fb7b91;
+      --cp-accent-soft: rgba(253, 142, 161, 0.14);
+      --cp-accent-fg: #1a1a1a;
+      --cp-success: #4ade80;
+      --cp-danger: #f87171;
+      --cp-warning: #fbbf24;
+      --cp-link: #4da6ff;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--cp-bg);
+      color: var(--cp-text);
+      line-height: 1.6;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--cp-accent);
+    }
+
+    h2 {
+      font-size: 1.4rem;
+      font-weight: 600;
+      margin: 32px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--cp-accent-soft);
+    }
+
+    h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 20px 0 10px;
+      color: var(--cp-text);
+    }
+
+    p, li { color: var(--cp-text); margin-bottom: 8px; }
+
+    .subtitle {
+      color: var(--cp-text-muted);
+      font-size: 1rem;
+      margin-bottom: 32px;
+    }
+
+    .card {
+      background: var(--cp-surface);
+      border: 1px solid var(--cp-border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 0 2px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .card-header .icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      background: var(--cp-accent-soft);
+    }
+
+    .card-header h3 { margin: 0; }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge-path-a { background: var(--cp-accent-soft); color: var(--cp-accent); }
+    .badge-path-b { background: rgba(0, 120, 212, 0.1); color: var(--cp-link); }
+    .badge-shared { background: rgba(22, 163, 74, 0.1); color: var(--cp-success); }
+
+    .step-list {
+      list-style: none;
+      padding: 0;
+      counter-reset: step-counter;
+    }
+
+    .step-list li {
+      counter-increment: step-counter;
+      position: relative;
+      padding: 16px 16px 16px 56px;
+      margin-bottom: 12px;
+      background: var(--cp-surface-soft);
+      border-radius: 10px;
+      border-left: 3px solid var(--cp-accent);
+    }
+
+    .step-list li::before {
+      content: counter(step-counter);
+      position: absolute;
+      left: 16px;
+      top: 16px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--cp-accent);
+      color: var(--cp-accent-fg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    .step-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .step-detail {
+      color: var(--cp-text-muted);
+      font-size: 0.9rem;
+    }
+
+    code {
+      font-family: Consolas, "Courier New", Courier, monospace;
+      background: var(--cp-surface-soft);
+      border: 1px solid var(--cp-border);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+
+    pre {
+      font-family: Consolas, "Courier New", Courier, monospace;
+      background: var(--cp-surface-soft);
+      border: 1px solid var(--cp-border);
+      padding: 16px;
+      border-radius: 10px;
+      overflow-x: auto;
+      font-size: 0.82rem;
+      line-height: 1.5;
+      margin: 12px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 0.9rem;
+    }
+
+    th, td {
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--cp-border);
+    }
+
+    th {
+      background: var(--cp-surface-soft);
+      font-weight: 600;
+      color: var(--cp-text-muted);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .flow-diagram {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 16px;
+      background: var(--cp-surface-soft);
+      border-radius: 10px;
+      margin: 12px 0;
+    }
+
+    .flow-node {
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .flow-node.trigger { background: var(--cp-accent-soft); color: var(--cp-accent); border: 1px solid var(--cp-accent); }
+    .flow-node.action { background: var(--cp-surface); border: 1px solid var(--cp-border); }
+    .flow-node.result { background: rgba(22, 163, 74, 0.1); color: var(--cp-success); border: 1px solid var(--cp-success); }
+    .flow-node.api { background: rgba(0, 120, 212, 0.1); color: var(--cp-link); border: 1px solid var(--cp-link); }
+
+    .flow-arrow {
+      font-size: 1.2rem;
+      color: var(--cp-text-muted);
+    }
+
+    .secrets-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+      margin: 12px 0;
+    }
+
+    .secret-card {
+      background: var(--cp-surface-soft);
+      border: 1px solid var(--cp-border);
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .secret-name {
+      font-family: Consolas, "Courier New", Courier, monospace;
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: var(--cp-accent);
+      margin-bottom: 4px;
+    }
+
+    .secret-desc {
+      font-size: 0.82rem;
+      color: var(--cp-text-muted);
+    }
+
+    .secret-source {
+      font-size: 0.75rem;
+      color: var(--cp-text-soft);
+      margin-top: 6px;
+      font-style: italic;
+    }
+
+    .toc {
+      background: var(--cp-surface);
+      border: 1px solid var(--cp-border);
+      border-radius: 16px;
+      padding: 20px 24px;
+      margin-bottom: 24px;
+    }
+
+    .toc a {
+      color: var(--cp-link);
+      text-decoration: none;
+      font-size: 0.9rem;
+      display: block;
+      padding: 4px 0;
+    }
+    .toc a:hover { text-decoration: underline; }
+
+    .workspace-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      background: var(--cp-highlight);
+      font-size: 0.85rem;
+      font-weight: 500;
+      margin: 4px 4px 4px 0;
+    }
+
+    .env-table td:first-child {
+      font-weight: 600;
+    }
+
+    .highlight-box {
+      background: var(--cp-accent-soft);
+      border-left: 4px solid var(--cp-accent);
+      padding: 14px 18px;
+      border-radius: 0 10px 10px 0;
+      margin: 12px 0;
+      font-size: 0.9rem;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 768px) {
+      .two-col { grid-template-columns: 1fr; }
+    }
+
+    .section-anchor { scroll-margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🚀 PBIX Deployment Automation</h1>
+    <p class="subtitle">Complete workflow breakdown for automated Power BI report deployment to Microsoft Fabric workspaces via GitHub Actions</p>
+
+    <!-- Table of Contents -->
+    <div class="toc">
+      <strong>📖 Table of Contents</strong>
+      <a href="#overview">1. Architecture Overview</a>
+      <a href="#workspaces">2. Fabric Workspaces & Environments</a>
+      <a href="#secrets">3. Secrets, Keys & Authentication</a>
+      <a href="#path-a">4. Path A — Direct PBIX Upload (deploy-pbix.yml)</a>
+      <a href="#import-script">5. Import Script (import-pbix.sh)</a>
+      <a href="#path-b">6. Path B — Convert & Deploy (path-b-convert-deploy.yml)</a>
+      <a href="#file-structure">7. Repository File Structure</a>
+      <a href="#e2e-flow">8. End-to-End Flow (Start to Finish)</a>
+    </div>
+
+    <!-- Section 1: Overview -->
+    <h2 id="overview" class="section-anchor">1. Architecture Overview</h2>
+    <div class="card">
+      <p><strong>Problem:</strong> Power BI report deployment is manual — developers build .pbix files in Power BI Desktop, then manually upload them to Fabric workspaces via the browser. No version control, no audit trail, no environment promotion.</p>
+      <p style="margin-top:12px"><strong>Solution:</strong> Two automated deployment paths triggered by Git push, orchestrated via GitHub Actions:</p>
+
+      <div class="two-col" style="margin-top:16px">
+        <div>
+          <h3><span class="badge badge-path-a">Path A</span> Direct PBIX Upload</h3>
+          <div class="flow-diagram" style="flex-direction:column;align-items:flex-start">
+            <div class="flow-node trigger">Push .pbix to reports/</div>
+            <span class="flow-arrow">↓</span>
+            <div class="flow-node action">GitHub Actions (ubuntu-latest)</div>
+            <span class="flow-arrow">↓</span>
+            <div class="flow-node api">Power BI REST API POST /imports</div>
+            <span class="flow-arrow">↓</span>
+            <div class="flow-node result">Report live in workspace ✓</div>
+          </div>
+        </div>
+        <div>
+          <h3><span class="badge badge-path-b">Path B</span> Convert + Git Sync</h3>
+          <div class="flow-diagram" style="flex-direction:column;align-items:flex-start">
+            <div class="flow-node trigger">Push .pbix to pbix-source/</div>
+            <span class="flow-arrow">↓</span>
+            <div class="flow-node action">pbi-tools extracts → PBIP text files</div>
+            <span class="flow-arrow">↓</span>
+            <div class="flow-node action">Auto-commit to pbip-output/</div>
+            <span class="flow-arrow">↓</span>
+            <div class="flow-node api">Fabric Git Sync API (updateFromGit)</div>
+            <span class="flow-arrow">↓</span>
+            <div class="flow-node result">Workspace syncs from repo ✓</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 2: Workspaces -->
+    <h2 id="workspaces" class="section-anchor">2. Fabric Workspaces & Environments</h2>
+    <div class="card">
+      <p>The automation supports <strong>multi-environment deployment</strong> with separate Fabric workspaces per environment:</p>
+
+      <table class="env-table" style="margin-top:16px">
+        <thead>
+          <tr><th>Environment</th><th>Branch Trigger</th><th>Workspace Secret</th><th>When Used</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="workspace-badge">🟢 DEV</span></td>
+            <td><code>main</code>, <code>dev</code></td>
+            <td><code>POWERBI_WORKSPACE_ID_dev</code></td>
+            <td>Default for all pushes; safe sandbox</td>
+          </tr>
+          <tr>
+            <td><span class="workspace-badge">🟡 TEST</span></td>
+            <td><code>test</code></td>
+            <td><code>POWERBI_WORKSPACE_ID_test</code></td>
+            <td>QA validation before production</td>
+          </tr>
+          <tr>
+            <td><span class="workspace-badge">🔴 PROD</span></td>
+            <td>Manual only (workflow_dispatch)</td>
+            <td><code>POWERBI_WORKSPACE_ID_prod</code></td>
+            <td>Explicit approval required</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="highlight-box">
+        <strong>Branch → Environment Mapping (Path A):</strong><br>
+        Push to <code>main</code> → deploys to DEV workspace<br>
+        Push to <code>test</code> → deploys to TEST workspace<br>
+        <code>workflow_dispatch</code> → choose any environment (dev/test/prod)
+      </div>
+
+      <h3 style="margin-top:20px">Path B Workspace (Fabric Git Sync)</h3>
+      <p>Path B uses a <strong>single workspace</strong> configured with Fabric's native Git integration. The workspace ID is stored in <code>FABRIC_WORKSPACE_ID</code>. This workspace is connected to the repo and syncs PBIP content from <code>pbip-output/</code>.</p>
+    </div>
+
+    <!-- Section 3: Secrets -->
+    <h2 id="secrets" class="section-anchor">3. Secrets, Keys & Authentication</h2>
+    <div class="card">
+      <h3>Authentication Flow</h3>
+      <p>Both paths use <strong>OAuth 2.0 Client Credentials Grant</strong> (service principal) to authenticate without human interaction:</p>
+
+      <pre>POST https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/token
+
+client_id=&lt;app-registration-id&gt;
+client_secret=&lt;app-secret-value&gt;
+scope=https://analysis.windows.net/powerbi/api/.default   ← Path A
+scope=https://api.fabric.microsoft.com/.default           ← Path B
+grant_type=client_credentials</pre>
+
+      <h3>Where Secrets Come From</h3>
+      <p>All secrets are stored in <strong>GitHub Repository Settings → Secrets and Variables → Actions</strong>. They originate from:</p>
+
+      <div class="secrets-grid">
+        <div class="secret-card">
+          <div class="secret-name">AZURE_TENANT_ID</div>
+          <div class="secret-desc">Your Microsoft Entra ID (Azure AD) tenant identifier</div>
+          <div class="secret-source">📍 Azure Portal → Entra ID → Overview → Tenant ID</div>
+        </div>
+        <div class="secret-card">
+          <div class="secret-name">AZURE_CLIENT_ID</div>
+          <div class="secret-desc">Application (client) ID of the service principal app registration</div>
+          <div class="secret-source">📍 Azure Portal → App Registrations → Your App → Application (client) ID</div>
+        </div>
+        <div class="secret-card">
+          <div class="secret-name">AZURE_CLIENT_SECRET</div>
+          <div class="secret-desc">Client secret value (not the secret ID!) for the app registration</div>
+          <div class="secret-source">📍 Azure Portal → App Registrations → Certificates & secrets → New client secret → Copy Value</div>
+        </div>
+        <div class="secret-card">
+          <div class="secret-name">POWERBI_WORKSPACE_ID_dev</div>
+          <div class="secret-desc">Fabric workspace GUID for the DEV environment</div>
+          <div class="secret-source">📍 Fabric Portal → Workspace → Settings → URL contains the workspace ID</div>
+        </div>
+        <div class="secret-card">
+          <div class="secret-name">POWERBI_WORKSPACE_ID_test</div>
+          <div class="secret-desc">Fabric workspace GUID for the TEST environment</div>
+          <div class="secret-source">📍 Same as above for your TEST workspace</div>
+        </div>
+        <div class="secret-card">
+          <div class="secret-name">POWERBI_WORKSPACE_ID_prod</div>
+          <div class="secret-desc">Fabric workspace GUID for the PROD environment</div>
+          <div class="secret-source">📍 Same as above for your PROD workspace</div>
+        </div>
+        <div class="secret-card">
+          <div class="secret-name">FABRIC_WORKSPACE_ID</div>
+          <div class="secret-desc">Workspace ID for Path B (Git-integrated Fabric workspace)</div>
+          <div class="secret-source">📍 Fabric Portal → Workspace with Git connection → Settings → Workspace ID</div>
+        </div>
+        <div class="secret-card">
+          <div class="secret-name">GITHUB_TOKEN</div>
+          <div class="secret-desc">Auto-provided by GitHub Actions for repo operations (auto-commit in Path B)</div>
+          <div class="secret-source">📍 Automatically available — no manual setup needed</div>
+        </div>
+      </div>
+
+      <h3 style="margin-top:20px">Service Principal Permissions Required</h3>
+      <table>
+        <thead><tr><th>Permission</th><th>Where to Set</th><th>Used By</th></tr></thead>
+        <tbody>
+          <tr><td>Power BI Service → Workspace Admin/Member</td><td>Fabric workspace access settings</td><td>Path A</td></tr>
+          <tr><td>Fabric API permissions (Workspace.ReadWrite.All)</td><td>App registration API permissions</td><td>Path B</td></tr>
+          <tr><td>"Allow service principals to use Power BI APIs"</td><td>Fabric Admin Portal → Tenant settings</td><td>Both</td></tr>
+          <tr><td>Service principal added to workspace</td><td>Workspace → Manage access → Add SPN</td><td>Both</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Section 4: Path A -->
+    <h2 id="path-a" class="section-anchor">4. Path A — Direct PBIX Upload (<code>deploy-pbix.yml</code>)</h2>
+    <div class="card">
+      <div class="card-header">
+        <div class="icon">📤</div>
+        <div>
+          <h3>deploy-pbix.yml</h3>
+          <span class="badge badge-path-a">Path A</span>
+        </div>
+      </div>
+
+      <p><strong>File:</strong> <code>.github/workflows/deploy-pbix.yml</code></p>
+      <p><strong>Runner:</strong> <code>ubuntu-latest</code></p>
+      <p><strong>Trigger:</strong> Push to <code>main</code>, <code>dev</code>, or <code>test</code> branches when files in <code>reports/**/*.pbix</code> change, or manual <code>workflow_dispatch</code></p>
+
+      <h3>Step-by-Step Workflow Execution</h3>
+      <ol class="step-list">
+        <li>
+          <div class="step-title">Checkout repository with Git LFS</div>
+          <div class="step-detail">Uses <code>actions/checkout@v4</code> with <code>lfs: true</code> to pull the actual .pbix binary files (not just LFS pointers). <code>fetch-depth: 2</code> allows comparing with previous commit.</div>
+        </li>
+        <li>
+          <div class="step-title">Determine target environment</div>
+          <div class="step-detail">Checks if triggered by <code>workflow_dispatch</code> (uses input), push to <code>test</code> branch, or defaults to <code>dev</code>. Outputs the environment name for subsequent steps.</div>
+        </li>
+        <li>
+          <div class="step-title">Authenticate to Microsoft Entra ID</div>
+          <div class="step-detail">Calls <code>POST /oauth2/v2.0/token</code> with client credentials. Scope: <code>https://analysis.windows.net/powerbi/api/.default</code>. Masks the token in logs with <code>::add-mask::</code>.</div>
+        </li>
+        <li>
+          <div class="step-title">Find PBIX files to deploy</div>
+          <div class="step-detail">For push events: runs <code>git diff --name-only HEAD~1 HEAD -- 'reports/**/*.pbix'</code> to find only changed files. For workflow_dispatch: finds ALL .pbix in <code>reports/</code>.</div>
+        </li>
+        <li>
+          <div class="step-title">Deploy each PBIX file</div>
+          <div class="step-detail">Loops through each file, calling <code>scripts/import-pbix.sh</code> with the file path, workspace ID (from environment-specific secret), and access token. Tracks success/failure counts.</div>
+        </li>
+        <li>
+          <div class="step-title">Write deployment summary</div>
+          <div class="step-detail">Outputs a GitHub Step Summary with environment, actor, commit SHA, and list of deployed files. Always runs (even on failure).</div>
+        </li>
+      </ol>
+
+      <h3>Key Configuration Details</h3>
+      <table>
+        <thead><tr><th>Setting</th><th>Value</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>permissions</td><td><code>contents: read</code></td><td>Only needs to read repo files, not write</td></tr>
+          <tr><td>lfs</td><td><code>true</code></td><td>.pbix files are tracked with Git LFS</td></tr>
+          <tr><td>Workspace secret pattern</td><td><code>POWERBI_WORKSPACE_ID_{env}</code></td><td>Dynamic secret lookup per environment</td></tr>
+          <tr><td>nameConflict</td><td><code>CreateOrOverwrite</code></td><td>Preserves artifact IDs (bookmarks/subscriptions survive)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Section 5: Import Script -->
+    <h2 id="import-script" class="section-anchor">5. Import Script (<code>import-pbix.sh</code>)</h2>
+    <div class="card">
+      <div class="card-header">
+        <div class="icon">📜</div>
+        <div>
+          <h3>scripts/import-pbix.sh</h3>
+          <span class="badge badge-path-a">Path A</span>
+        </div>
+      </div>
+
+      <p><strong>Purpose:</strong> Uploads a single .pbix file to a Power BI workspace via REST API and polls until import completes.</p>
+      <p><strong>Usage:</strong> <code>import-pbix.sh &lt;pbix-file-path&gt; &lt;workspace-id&gt; &lt;access-token&gt;</code></p>
+
+      <h3>Step-by-Step Script Execution</h3>
+      <ol class="step-list">
+        <li>
+          <div class="step-title">Parse arguments & validate</div>
+          <div class="step-detail">Accepts 3 positional args or env vars (<code>PBIX_FILE_PATH</code>, <code>POWERBI_WORKSPACE_ID</code>, <code>ACCESS_TOKEN</code>). Validates file exists on disk.</div>
+        </li>
+        <li>
+          <div class="step-title">URL-encode the display name</div>
+          <div class="step-detail">Strips <code>.pbix</code> extension, then URL-encodes the filename using <code>jq -sRr @uri</code>. Handles spaces, special characters (e.g., "Sales Report Q1" → "Sales%20Report%20Q1").</div>
+        </li>
+        <li>
+          <div class="step-title">Upload via POST /imports</div>
+          <div class="step-detail">
+            Calls:<br>
+            <code>POST /v1.0/myorg/groups/{workspaceId}/imports?datasetDisplayName={name}&nameConflict=CreateOrOverwrite</code><br>
+            Sends file as multipart/form-data. Extracts <code>importId</code> from JSON response.
+          </div>
+        </li>
+        <li>
+          <div class="step-title">Poll import status</div>
+          <div class="step-detail">
+            Calls <code>GET /imports/{importId}</code> every 10 seconds. Checks <code>importState</code> field:<br>
+            • <code>Succeeded</code> → extract Dataset ID + Report ID, exit 0<br>
+            • <code>Failed</code> → print errors, exit 1<br>
+            • Anything else → keep polling (up to 60 polls = 10 minutes)
+          </div>
+        </li>
+        <li>
+          <div class="step-title">Output results</div>
+          <div class="step-detail">On success, prints Dataset ID and Report ID. If running in GitHub Actions (detects <code>GITHUB_OUTPUT</code> env var), writes them as step outputs for downstream use.</div>
+        </li>
+      </ol>
+
+      <h3>Exit Codes</h3>
+      <table>
+        <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>0</code></td><td>✅ Import succeeded — Dataset & Report IDs available</td></tr>
+          <tr><td><code>1</code></td><td>❌ Failure — API error or import failed</td></tr>
+          <tr><td><code>2</code></td><td>⏰ Timeout — import didn't complete in 10 minutes</td></tr>
+        </tbody>
+      </table>
+
+      <h3>API Endpoints Used</h3>
+      <pre>Base URL: https://api.powerbi.com/v1.0/myorg
+
+Upload:  POST /groups/{workspaceId}/imports
+              ?datasetDisplayName={encodedName}
+              &nameConflict=CreateOrOverwrite
+         Headers: Authorization: Bearer {token}
+                  Content-Type: multipart/form-data
+         Body: file=@{path-to-pbix}
+
+Status:  GET /groups/{workspaceId}/imports/{importId}
+         Headers: Authorization: Bearer {token}</pre>
+    </div>
+
+    <!-- Section 6: Path B -->
+    <h2 id="path-b" class="section-anchor">6. Path B — Convert & Deploy (<code>path-b-convert-deploy.yml</code>)</h2>
+    <div class="card">
+      <div class="card-header">
+        <div class="icon">🔄</div>
+        <div>
+          <h3>path-b-convert-deploy.yml</h3>
+          <span class="badge badge-path-b">Path B</span>
+        </div>
+      </div>
+
+      <p><strong>File:</strong> <code>.github/workflows/path-b-convert-deploy.yml</code></p>
+      <p><strong>Trigger:</strong> Push to <code>main</code> when files in <code>pbix-source/**/*.pbix</code> change, or manual <code>workflow_dispatch</code></p>
+      <p><strong>Jobs:</strong> 2 sequential jobs — <code>convert</code> (Windows) → <code>sync-to-fabric</code> (Ubuntu)</p>
+
+      <h3>Job 1: Convert (windows-latest)</h3>
+      <ol class="step-list">
+        <li>
+          <div class="step-title">Checkout with LFS & full history</div>
+          <div class="step-detail">Uses <code>fetch-depth: 0</code> for full Git history (needed for commit/push). Token: <code>GITHUB_TOKEN</code> (allows push back).</div>
+        </li>
+        <li>
+          <div class="step-title">Download pbi-tools.core</div>
+          <div class="step-detail">Queries GitHub API for the latest pbi-tools release. Downloads the <code>win-x64</code> zip, extracts it, and adds the exe to PATH. This is a standalone .NET tool — no Power BI Desktop needed.</div>
+        </li>
+        <li>
+          <div class="step-title">Convert PBIX → PBIP</div>
+          <div class="step-detail">For each <code>.pbix</code> in <code>pbix-source/</code>: runs <code>pbi-tools.core extract {file} -outPath pbip-output/{name}/</code>. This produces text-based JSON/TMDL files that are diffable and reviewable in PRs.</div>
+        </li>
+        <li>
+          <div class="step-title">Auto-commit converted files</div>
+          <div class="step-detail">Configures Git as <code>github-actions[bot]</code>, stages <code>pbip-output/</code>, commits with message containing <code>[skip ci]</code> (prevents infinite loop), and pushes to main.</div>
+        </li>
+      </ol>
+
+      <h3>Job 2: Sync to Fabric (ubuntu-latest)</h3>
+      <ol class="step-list">
+        <li>
+          <div class="step-title">Authenticate to Entra ID</div>
+          <div class="step-detail">Same client credentials flow as Path A, but with scope <code>https://api.fabric.microsoft.com/.default</code> (Fabric API instead of Power BI API).</div>
+        </li>
+        <li>
+          <div class="step-title">Get latest commit hash</div>
+          <div class="step-detail">Queries GitHub API for the latest commit on <code>main</code> (which includes the auto-commit from Job 1). This hash is passed to Fabric so it knows what to sync.</div>
+        </li>
+        <li>
+          <div class="step-title">Trigger Fabric Git Sync</div>
+          <div class="step-detail">
+            Calls:<br>
+            <code>POST /v1/workspaces/{id}/git/updateFromGit</code><br>
+            Body includes the commit hash and conflict resolution policy (<code>PreferRemote</code> = repo wins over workspace). Polls the long-running operation until complete (up to 10 minutes).
+          </div>
+        </li>
+        <li>
+          <div class="step-title">Write sync summary</div>
+          <div class="step-detail">Outputs workspace ID, commit hash, actor, and status to GitHub Step Summary.</div>
+        </li>
+      </ol>
+
+      <h3>Why Windows Runner?</h3>
+      <div class="highlight-box">
+        <code>pbi-tools.core</code> is a .NET application that uses Windows-specific libraries to parse the PBIX file format (which is essentially a compressed package containing Analysis Services model definitions). It cannot run on Linux.
+      </div>
+
+      <h3>Fabric Git Sync API</h3>
+      <pre>POST https://api.fabric.microsoft.com/v1/workspaces/{workspaceId}/git/updateFromGit
+
+Headers:
+  Authorization: Bearer {fabric-token}
+  Content-Type: application/json
+
+Body:
+{
+  "remoteCommitHash": "{sha}",
+  "conflictResolution": {
+    "conflictResolutionType": "Workspace",
+    "conflictResolutionPolicy": "PreferRemote"
+  },
+  "options": {
+    "allowOverrideItems": true
+  }
+}</pre>
+    </div>
+
+    <!-- Section 7: File Structure -->
+    <h2 id="file-structure" class="section-anchor">7. Repository File Structure</h2>
+    <div class="card">
+      <pre>sautalwar/fabric-cicd-github
+├── .gitattributes                          ← Git LFS tracking (*.pbix)
+├── .github/
+│   └── workflows/
+│       ├── deploy-pbix.yml                 ← Path A workflow
+│       └── path-b-convert-deploy.yml       ← Path B workflow
+├── scripts/
+│   └── import-pbix.sh                      ← Upload & poll script
+├── reports/                                ← Path A: drop .pbix here
+│   └── .gitkeep
+├── pbix-source/                            ← Path B: drop .pbix here
+│   └── .gitkeep
+└── pbip-output/                            ← Path B: auto-populated
+    └── .gitkeep                               (converted PBIP text files)</pre>
+
+      <h3>Git LFS Configuration</h3>
+      <p>The <code>.gitattributes</code> file ensures <code>*.pbix</code> files are stored with Git Large File Storage:</p>
+      <pre>*.pbix filter=lfs diff=lfs merge=lfs -text</pre>
+      <p>This prevents binary .pbix files (which can be 50–500MB) from bloating the Git history. LFS stores them efficiently as pointers with the actual content in LFS storage.</p>
+    </div>
+
+    <!-- Section 8: E2E Flow -->
+    <h2 id="e2e-flow" class="section-anchor">8. End-to-End Flow (Start to Finish)</h2>
+    <div class="card">
+      <h3>Path A: Developer Deploys a Report Directly</h3>
+      <ol class="step-list">
+        <li>
+          <div class="step-title">Developer builds report in Power BI Desktop</div>
+          <div class="step-detail">Creates or modifies a .pbix file locally using Power BI Desktop application.</div>
+        </li>
+        <li>
+          <div class="step-title">Saves .pbix into <code>reports/</code> folder</div>
+          <div class="step-detail">Copies the file to the <code>reports/</code> directory in their local clone. Git LFS tracks it.</div>
+        </li>
+        <li>
+          <div class="step-title">Pushes to <code>main</code> branch</div>
+          <div class="step-detail"><code>git add reports/Sales_Report.pbix && git commit -m "Update sales report" && git push</code></div>
+        </li>
+        <li>
+          <div class="step-title">GitHub detects path match → triggers <code>deploy-pbix.yml</code></div>
+          <div class="step-detail">The workflow trigger filter <code>paths: ['reports/**/*.pbix']</code> fires the workflow on the ubuntu runner.</div>
+        </li>
+        <li>
+          <div class="step-title">Workflow authenticates to Entra ID</div>
+          <div class="step-detail">Uses secrets <code>AZURE_TENANT_ID</code> + <code>AZURE_CLIENT_ID</code> + <code>AZURE_CLIENT_SECRET</code> to get an OAuth token for Power BI API.</div>
+        </li>
+        <li>
+          <div class="step-title">Workflow identifies changed .pbix files</div>
+          <div class="step-detail"><code>git diff HEAD~1 HEAD</code> finds only the files that changed in this push.</div>
+        </li>
+        <li>
+          <div class="step-title">Calls <code>import-pbix.sh</code> for each file</div>
+          <div class="step-detail">Script uploads via <code>POST /imports</code> with <code>nameConflict=CreateOrOverwrite</code>, then polls every 10 seconds.</div>
+        </li>
+        <li>
+          <div class="step-title">Report appears in Fabric workspace</div>
+          <div class="step-detail">Within 1–5 minutes, the report and its dataset are live in the DEV workspace. Dataset ID and Report ID are logged in the workflow output.</div>
+        </li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h3>Path B: Developer Wants Diffable/Reviewable Deployment</h3>
+      <ol class="step-list">
+        <li>
+          <div class="step-title">Developer builds report in Power BI Desktop</div>
+          <div class="step-detail">Same as Path A — creates or modifies a .pbix file locally.</div>
+        </li>
+        <li>
+          <div class="step-title">Saves .pbix into <code>pbix-source/</code> folder</div>
+          <div class="step-detail">Uses the <code>pbix-source/</code> directory instead of <code>reports/</code>.</div>
+        </li>
+        <li>
+          <div class="step-title">Pushes to <code>main</code> branch</div>
+          <div class="step-detail"><code>git push</code> — triggers the Path B workflow.</div>
+        </li>
+        <li>
+          <div class="step-title">GitHub Actions spins up a Windows runner</div>
+          <div class="step-detail">Required because pbi-tools.core is a Windows .NET application that parses PBIX internals.</div>
+        </li>
+        <li>
+          <div class="step-title">pbi-tools.core extracts PBIX → PBIP</div>
+          <div class="step-detail">Converts the binary .pbix into text-based PBIP format (JSON model definitions, TMDL measures, Power Query M expressions). These are human-readable and diffable.</div>
+        </li>
+        <li>
+          <div class="step-title">Converted files auto-committed to <code>pbip-output/</code></div>
+          <div class="step-detail">Git commit as <code>github-actions[bot]</code> with <code>[skip ci]</code> in the message to prevent recursive workflow triggers.</div>
+        </li>
+        <li>
+          <div class="step-title">Second job authenticates to Fabric API</div>
+          <div class="step-detail">Uses same SPN credentials but with Fabric scope (<code>api.fabric.microsoft.com</code>).</div>
+        </li>
+        <li>
+          <div class="step-title">Calls Fabric Git Sync API</div>
+          <div class="step-detail"><code>POST /workspaces/{id}/git/updateFromGit</code> tells the workspace to pull latest from the repo. Conflict resolution: repo wins.</div>
+        </li>
+        <li>
+          <div class="step-title">Fabric workspace reflects the changes</div>
+          <div class="step-detail">Reports, datasets, and semantic models in the workspace update to match the PBIP files in the repo. Full audit trail in Git history.</div>
+        </li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h3>Comparison: When to Use Each Path</h3>
+      <table>
+        <thead><tr><th>Criteria</th><th>Path A (Direct Upload)</th><th>Path B (Convert + Sync)</th></tr></thead>
+        <tbody>
+          <tr><td>Speed</td><td>⚡ Fast (1-5 min)</td><td>🐢 Slower (conversion + sync)</td></tr>
+          <tr><td>Diffability</td><td>❌ Binary — can't review in PR</td><td>✅ Text-based — full PR review</td></tr>
+          <tr><td>Multi-environment</td><td>✅ dev/test/prod via secrets</td><td>⚠️ Single workspace (Git-connected)</td></tr>
+          <tr><td>Audit trail</td><td>GitHub commit + workflow logs</td><td>Full Git history of every DAX/M change</td></tr>
+          <tr><td>Runner cost</td><td>Linux (cheap)</td><td>Windows (more expensive)</td></tr>
+          <tr><td>Best for</td><td>Quick iterative deployments</td><td>Team reviews, compliance, governance</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p style="text-align:center; color:var(--cp-text-muted); margin-top:32px; font-size:0.85rem;">
+      Generated for <strong>sautalwar/fabric-cicd-github</strong> • Branch: <code>sautalwar/pbix-deploy-workflows</code>
+    </p>
+  </div>
+</body>
+</html>
