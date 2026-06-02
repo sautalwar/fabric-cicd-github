@@ -52,6 +52,10 @@ Thumbs.db
 *.pbix
 *.pbit
 
+# Allow .pbix in deployment source folders (tracked via Git LFS)
+!reports/**/*.pbix
+!pbix-source/**/*.pbix
+
 # Test coverage
 .coverage
 htmlcov/
