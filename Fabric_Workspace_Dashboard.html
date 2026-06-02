@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fabric Workspace Contents & Deployment Steps</title>
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const theme = param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #16a34a;
+      --cp-danger: #dc2626;
+      --cp-warning: #f59e0b;
+      --cp-link: #0078d4;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+      --cp-accent: #fd8ea1;
+      --cp-accent-hover: #fb7b91;
+      --cp-accent-soft: rgba(253, 142, 161, 0.14);
+      --cp-accent-fg: #1a1a1a;
+      --cp-success: #4ade80;
+      --cp-danger: #f87171;
+      --cp-warning: #fbbf24;
+      --cp-link: #4da6ff;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--cp-bg);
+      color: var(--cp-text);
+      line-height: 1.6;
+      padding: 24px;
+    }
+    .container { max-width: 1100px; margin: 0 auto; }
+    h1 { font-size: 1.8rem; font-weight: 700; color: var(--cp-accent); margin-bottom: 4px; }
+    h2 { font-size: 1.3rem; font-weight: 600; margin: 28px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--cp-accent-soft); }
+    h3 { font-size: 1.05rem; font-weight: 600; margin: 16px 0 8px; }
+    .subtitle { color: var(--cp-text-muted); font-size: 0.9rem; margin-bottom: 24px; }
+    .card { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px; padding: 20px; margin-bottom: 16px; box-shadow: 0 0 2px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14); }
+    code { font-family: Consolas, "Courier New", monospace; background: var(--cp-surface-soft); border: 1px solid var(--cp-border); padding: 2px 6px; border-radius: 4px; font-size: 0.82rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 8px 0; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--cp-border); }
+    th { background: var(--cp-surface-soft); font-weight: 600; color: var(--cp-text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
+    .badge { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 6px; text-transform: uppercase; }
+    .badge-report { background: rgba(0,120,212,0.1); color: var(--cp-link); }
+    .badge-model { background: rgba(177,31,75,0.08); color: var(--cp-accent); }
+    .badge-notebook { background: rgba(22,163,74,0.1); color: var(--cp-success); }
+    .badge-pipeline { background: rgba(245,158,11,0.1); color: var(--cp-warning); }
+    .badge-other { background: var(--cp-surface-soft); color: var(--cp-text-muted); }
+
+    .ws-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .ws-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
+    .ws-dev .ws-icon { background: rgba(22,163,74,0.1); }
+    .ws-test .ws-icon { background: rgba(245,158,11,0.1); }
+    .ws-prod .ws-icon { background: rgba(220,38,38,0.1); }
+    .ws-count { font-size: 0.8rem; color: var(--cp-text-muted); margin-left: auto; }
+
+    .step-card { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px; padding: 20px; margin-bottom: 16px; position: relative; border-left: 4px solid var(--cp-accent); }
+    .step-number { position: absolute; top: -10px; left: 16px; background: var(--cp-accent); color: var(--cp-accent-fg); font-size: 0.7rem; font-weight: 700; padding: 2px 10px; border-radius: 10px; }
+    .step-title { font-weight: 600; font-size: 1rem; margin-bottom: 8px; margin-top: 4px; }
+    .step-section { margin: 10px 0; }
+    .step-section-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--cp-text-muted); margin-bottom: 4px; }
+    .step-section-content { font-size: 0.88rem; color: var(--cp-text); padding: 8px 12px; background: var(--cp-surface-soft); border-radius: 8px; }
+    .criteria-list { list-style: none; padding: 0; }
+    .criteria-list li { padding: 4px 0; font-size: 0.85rem; }
+    .criteria-list li::before { content: "✓ "; color: var(--cp-success); font-weight: bold; }
+    .prereq-list { list-style: none; padding: 0; }
+    .prereq-list li { padding: 4px 0; font-size: 0.85rem; }
+    .prereq-list li::before { content: "⚡ "; }
+
+    .secrets-status { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+    .secret-item { padding: 10px; background: var(--cp-surface-soft); border-radius: 8px; border: 1px solid var(--cp-border); }
+    .secret-name { font-family: Consolas, monospace; font-size: 0.75rem; font-weight: 600; color: var(--cp-accent); }
+    .secret-status { font-size: 0.72rem; color: var(--cp-success); margin-top: 2px; }
+
+    .connector { text-align: center; padding: 8px 0; color: var(--cp-text-muted); font-size: 1.2rem; }
+    .empty-state { text-align: center; padding: 20px; color: var(--cp-text-muted); font-style: italic; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>🏗️ Fabric Workspace Contents & Deployment Steps</h1>
+  <p class="subtitle">Live data from Fabric REST API • All 3 NVR environments • Step-by-step task breakdown with success criteria</p>
+
+  <!-- ===== WORKSPACE CONTENTS ===== -->
+  <h2>📂 Current Workspace Contents</h2>
+
+  <div class="card ws-dev">
+    <div class="ws-header">
+      <div class="ws-icon">🟢</div>
+      <div>
+        <h3 style="margin:0">NVR-Dev</h3>
+        <div style="font-size:0.78rem;color:var(--cp-text-muted)">ID: d44744bc-d9d8-4cd1-a044-bab24399b67d</div>
+      </div>
+      <div class="ws-count">18 items</div>
+    </div>
+    <table>
+      <thead><tr><th>Type</th><th>Name</th><th>Item ID</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-report">Report</span></td><td>Report01</td><td><code>f10e9ec2-d403-4bcd-b809-c3dc84cda23b</code></td></tr>
+        <tr><td><span class="badge badge-report">Report</span></td><td>Report02</td><td><code>656204cd-0569-45b2-b2e7-93588e470cde</code></td></tr>
+        <tr><td><span class="badge badge-report">Report</span></td><td>Report03</td><td><code>de0e3a3e-acee-42b6-8425-15ddb66b9551</code></td></tr>
+        <tr><td><span class="badge badge-report">Report</span></td><td>Report04</td><td><code>0aac3107-55bf-49e1-8ec6-ce16f0df5baf</code></td></tr>
+        <tr><td><span class="badge badge-report">Report</span></td><td>Report05</td><td><code>5b1f7c40-9dfa-4aea-9fa9-a3e34d1ede6c</code></td></tr>
+        <tr><td><span class="badge badge-report">Report</span></td><td>Template Report</td><td><code>dcdbd944-0555-4afd-bf45-5ebbfc595d23</code></td></tr>
+        <tr><td><span class="badge badge-report">Report</span></td><td>Population-country-1950-1999</td><td><code>73b85741-0bf6-46e4-9032-56a4bdca73f3</code></td></tr>
+        <tr><td><span class="badge badge-model">SemanticModel</span></td><td>Model01</td><td><code>a6e927cd-e558-468b-a540-556a1cf87bf5</code></td></tr>
+        <tr><td><span class="badge badge-model">SemanticModel</span></td><td>Model02</td><td><code>05c374b1-94e5-4345-992d-6fdaa9899ce4</code></td></tr>
+        <tr><td><span class="badge badge-model">SemanticModel</span></td><td>Model03</td><td><code>450125b7-00a3-4991-9279-cfb1774ae04a</code></td></tr>
+        <tr><td><span class="badge badge-model">SemanticModel</span></td><td>Population-country-1950-1999</td><td><code>23a7e94c-a455-42e1-98bc-3416d7bd987c</code></td></tr>
+        <tr><td><span class="badge badge-notebook">Notebook</span></td><td>data_ingestion</td><td><code>7948c98f-f4a4-45db-bdc0-dc0ca8b7f52c</code></td></tr>
+        <tr><td><span class="badge badge-notebook">Notebook</span></td><td>model_training</td><td><code>66d80ad7-423f-4515-82fd-8c0494b3eccb</code></td></tr>
+        <tr><td><span class="badge badge-notebook">Notebook</span></td><td>model_training1</td><td><code>3c0c7df7-3d9d-4e39-8969-d7815cf0337c</code></td></tr>
+        <tr><td><span class="badge badge-pipeline">DataPipeline</span></td><td>Model_pipeline</td><td><code>f6cf22b9-f58f-420d-b450-4b9ca686583b</code></td></tr>
+        <tr><td><span class="badge badge-other">Lakehouse</span></td><td>customer_data_lakehouse</td><td><code>f1da9f0b-0c17-407e-a5f6-853ae0065c26</code></td></tr>
+        <tr><td><span class="badge badge-other">MLExperiment</span></td><td>NVR_Customer_Churn_Prediction</td><td><code>87ee6b7b-afc4-4feb-9ff8-a74e8d1623bc</code></td></tr>
+        <tr><td><span class="badge badge-other">SQLEndpoint</span></td><td>customer_data_lakehouse</td><td><code>8d48bcc0-a814-4a65-9747-eeb13921c8a0</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card ws-test">
+    <div class="ws-header">
+      <div class="ws-icon">🟡</div>
+      <div>
+        <h3 style="margin:0">NVR-Test</h3>
+        <div style="font-size:0.78rem;color:var(--cp-text-muted)">ID: 983d0acf-a791-44a7-94a3-c726c0ee3eb3</div>
+      </div>
+      <div class="ws-count">0 items</div>
+    </div>
+    <div class="empty-state">Empty workspace — no items deployed yet</div>
+  </div>
+
+  <div class="card ws-prod">
+    <div class="ws-header">
+      <div class="ws-icon">🔴</div>
+      <div>
+        <h3 style="margin:0">NVR-Production</h3>
+        <div style="font-size:0.78rem;color:var(--cp-text-muted)">ID: 711e19bd-2109-4167-a058-29d3fae739b8</div>
+      </div>
+      <div class="ws-count">0 items</div>
+    </div>
+    <div class="empty-state">Empty workspace — no items deployed yet</div>
+  </div>
+
+  <!-- ===== SECRETS STATUS ===== -->
+  <h2>🔐 GitHub Secrets Status</h2>
+  <div class="card">
+    <p style="margin-bottom:12px;font-size:0.9rem">All secrets are configured in <code>sautalwar/fabric-cicd-github</code> → Settings → Secrets → Actions:</p>
+    <div class="secrets-status">
+      <div class="secret-item"><div class="secret-name">AZURE_TENANT_ID</div><div class="secret-status">✅ Set</div></div>
+      <div class="secret-item"><div class="secret-name">AZURE_CLIENT_ID</div><div class="secret-status">✅ Set</div></div>
+      <div class="secret-item"><div class="secret-name">AZURE_CLIENT_SECRET</div><div class="secret-status">✅ Set (expires 2027-06)</div></div>
+      <div class="secret-item"><div class="secret-name">FABRIC_CLIENT_ID</div><div class="secret-status">✅ Set</div></div>
+      <div class="secret-item"><div class="secret-name">FABRIC_CLIENT_SECRET</div><div class="secret-status">✅ Set</div></div>
+      <div class="secret-item"><div class="secret-name">FABRIC_TENANT_ID</div><div class="secret-status">✅ Set</div></div>
+      <div class="secret-item"><div class="secret-name">FABRIC_DEV_WORKSPACE_ID</div><div class="secret-status">✅ Set</div></div>
+      <div class="secret-item"><div class="secret-name">FABRIC_TEST_WORKSPACE_ID</div><div class="secret-status">✅ Set</div></div>
+      <div class="secret-item"><div class="secret-name">FABRIC_PROD_WORKSPACE_ID</div><div class="secret-status">✅ Set</div></div>
+      <div class="secret-item"><div class="secret-name">FABRIC_WORKSPACE_ID</div><div class="secret-status">✅ Set</div></div>
+      <div class="secret-item"><div class="secret-name">POWERBI_WORKSPACE_ID_dev</div><div class="secret-status">✅ Set</div></div>
+      <div class="secret-item"><div class="secret-name">POWERBI_WORKSPACE_ID_test</div><div class="secret-status">✅ Set</div></div>
+      <div class="secret-item"><div class="secret-name">POWERBI_WORKSPACE_ID_prod</div><div class="secret-status">✅ Set</div></div>
+    </div>
+  </div>
+
+  <!-- ===== STEP-BY-STEP DEPLOYMENT TASKS ===== -->
+  <h2>📋 Step-by-Step Deployment Tasks</h2>
+  <p style="font-size:0.9rem;color:var(--cp-text-muted);margin-bottom:16px">Each step shows the task, success criteria, and prerequisites for the next step.</p>
+
+  <!-- Step 1 -->
+  <div class="step-card">
+    <div class="step-number">STEP 1</div>
+    <div class="step-title">Developer creates/updates a .pbix file</div>
+    <div class="step-section">
+      <div class="step-section-label">📝 Task</div>
+      <div class="step-section-content">Build or modify a Power BI report in Power BI Desktop. Save as <code>.pbix</code> file.</div>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">✅ Success Criteria</div>
+      <ul class="criteria-list">
+        <li>A valid .pbix file exists on local disk</li>
+        <li>File opens correctly in Power BI Desktop</li>
+        <li>Data model and visuals render without errors</li>
+      </ul>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">⚡ Prerequisites for Next Step</div>
+      <ul class="prereq-list">
+        <li>Git LFS installed locally (<code>git lfs install</code>)</li>
+        <li>Repo cloned with <code>.gitattributes</code> tracking *.pbix</li>
+        <li>Know which path to use: <code>reports/</code> (Path A) or <code>pbix-source/</code> (Path B)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="connector">↓</div>
+
+  <!-- Step 2 -->
+  <div class="step-card">
+    <div class="step-number">STEP 2</div>
+    <div class="step-title">Push .pbix to GitHub repository</div>
+    <div class="step-section">
+      <div class="step-section-label">📝 Task</div>
+      <div class="step-section-content">
+        Copy <code>.pbix</code> to the appropriate folder and push:<br><br>
+        <code>git add reports/MyReport.pbix</code><br>
+        <code>git commit -m "Add MyReport"</code><br>
+        <code>git push origin main</code>
+      </div>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">✅ Success Criteria</div>
+      <ul class="criteria-list">
+        <li>File appears in GitHub repo (as LFS pointer, not raw binary)</li>
+        <li>Push succeeds without errors</li>
+        <li>GitHub Actions workflow is triggered (visible in Actions tab)</li>
+      </ul>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">⚡ Prerequisites for Next Step</div>
+      <ul class="prereq-list">
+        <li>GitHub Actions enabled on the repo</li>
+        <li>Workflow file exists at correct path (<code>.github/workflows/deploy-pbix.yml</code>)</li>
+        <li>Branch matches workflow trigger (main, dev, or test)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="connector">↓</div>
+
+  <!-- Step 3 -->
+  <div class="step-card">
+    <div class="step-number">STEP 3</div>
+    <div class="step-title">GitHub Actions triggers and checks out code</div>
+    <div class="step-section">
+      <div class="step-section-label">📝 Task</div>
+      <div class="step-section-content">
+        Workflow runs on <code>ubuntu-latest</code>. Checks out repo with <code>lfs: true</code> (downloads actual binary, not pointer). Determines target environment from branch name or workflow_dispatch input.
+      </div>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">✅ Success Criteria</div>
+      <ul class="criteria-list">
+        <li>Runner starts successfully</li>
+        <li>Git LFS pulls the actual .pbix binary (file size > 1KB)</li>
+        <li>Environment correctly resolved (dev/test/prod)</li>
+      </ul>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">⚡ Prerequisites for Next Step</div>
+      <ul class="prereq-list">
+        <li><code>AZURE_TENANT_ID</code> secret must be set</li>
+        <li><code>AZURE_CLIENT_ID</code> secret must be set</li>
+        <li><code>AZURE_CLIENT_SECRET</code> secret must be set (valid, not expired)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="connector">↓</div>
+
+  <!-- Step 4 -->
+  <div class="step-card">
+    <div class="step-number">STEP 4</div>
+    <div class="step-title">Authenticate to Microsoft Entra ID</div>
+    <div class="step-section">
+      <div class="step-section-label">📝 Task</div>
+      <div class="step-section-content">
+        POST to <code>https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token</code> with client credentials grant.<br>
+        Scope: <code>https://analysis.windows.net/powerbi/api/.default</code><br>
+        Receives a Bearer access token valid for ~60 minutes.
+      </div>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">✅ Success Criteria</div>
+      <ul class="criteria-list">
+        <li>HTTP 200 response from token endpoint</li>
+        <li>Response contains valid <code>access_token</code> (starts with "ey...")</li>
+        <li>Token is masked in logs (<code>::add-mask::</code>)</li>
+      </ul>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">⚡ Prerequisites for Next Step</div>
+      <ul class="prereq-list">
+        <li>Valid access token obtained</li>
+        <li>Service principal has Power BI workspace access (Admin/Member role)</li>
+        <li>Tenant setting "Allow service principals to use Power BI APIs" enabled</li>
+        <li><code>POWERBI_WORKSPACE_ID_{env}</code> secret set for target environment</li>
+      </ul>
+    </div>
+  </div>
+  <div class="connector">↓</div>
+
+  <!-- Step 5 -->
+  <div class="step-card">
+    <div class="step-number">STEP 5</div>
+    <div class="step-title">Identify changed .pbix files</div>
+    <div class="step-section">
+      <div class="step-section-label">📝 Task</div>
+      <div class="step-section-content">
+        For push events: <code>git diff --name-only HEAD~1 HEAD -- 'reports/**/*.pbix'</code><br>
+        For workflow_dispatch: <code>find reports/ -name "*.pbix"</code><br>
+        Outputs a list of files to deploy.
+      </div>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">✅ Success Criteria</div>
+      <ul class="criteria-list">
+        <li>At least one .pbix file identified (otherwise skip with warning)</li>
+        <li>File paths are valid and files exist on disk</li>
+        <li>Output list is stored for the deploy loop</li>
+      </ul>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">⚡ Prerequisites for Next Step</div>
+      <ul class="prereq-list">
+        <li><code>scripts/import-pbix.sh</code> exists and is executable</li>
+        <li><code>jq</code> and <code>curl</code> available on runner (ubuntu-latest includes both)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="connector">↓</div>
+
+  <!-- Step 6 -->
+  <div class="step-card">
+    <div class="step-number">STEP 6</div>
+    <div class="step-title">Upload .pbix via Power BI REST API</div>
+    <div class="step-section">
+      <div class="step-section-label">📝 Task</div>
+      <div class="step-section-content">
+        For each file, <code>import-pbix.sh</code> runs:<br><br>
+        1. URL-encode display name (strip .pbix extension)<br>
+        2. <code>POST /v1.0/myorg/groups/{workspaceId}/imports?datasetDisplayName={name}&nameConflict=CreateOrOverwrite</code><br>
+        3. Send file as multipart/form-data<br>
+        4. Extract <code>importId</code> from response
+      </div>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">✅ Success Criteria</div>
+      <ul class="criteria-list">
+        <li>HTTP 200/202 response from imports endpoint</li>
+        <li>Valid <code>importId</code> returned in response body</li>
+        <li>No "Unauthorized" or "Forbidden" errors</li>
+      </ul>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">⚡ Prerequisites for Next Step</div>
+      <ul class="prereq-list">
+        <li>Import accepted (importId available)</li>
+        <li>Network connectivity to api.powerbi.com maintained</li>
+        <li>Token still valid (hasn't expired during upload of large file)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="connector">↓</div>
+
+  <!-- Step 7 -->
+  <div class="step-card">
+    <div class="step-number">STEP 7</div>
+    <div class="step-title">Poll import status until completion</div>
+    <div class="step-section">
+      <div class="step-section-label">📝 Task</div>
+      <div class="step-section-content">
+        Every 10 seconds, call <code>GET /groups/{workspaceId}/imports/{importId}</code><br>
+        Check <code>importState</code> field. Continue until "Succeeded", "Failed", or 60 polls (10min timeout).
+      </div>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">✅ Success Criteria</div>
+      <ul class="criteria-list">
+        <li><code>importState</code> = "Succeeded"</li>
+        <li>Response contains <code>datasets[0].id</code> (Dataset ID)</li>
+        <li>Response contains <code>reports[0].id</code> (Report ID)</li>
+        <li>Both IDs written to GITHUB_OUTPUT for downstream use</li>
+      </ul>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">⚡ Prerequisites for Next Step</div>
+      <ul class="prereq-list">
+        <li>All files successfully imported (zero failures)</li>
+        <li>If any file fails: workflow exits with code 1</li>
+      </ul>
+    </div>
+  </div>
+  <div class="connector">↓</div>
+
+  <!-- Step 8 -->
+  <div class="step-card">
+    <div class="step-number">STEP 8</div>
+    <div class="step-title">Report live in Fabric workspace</div>
+    <div class="step-section">
+      <div class="step-section-label">📝 Task</div>
+      <div class="step-section-content">
+        Deployment complete. Report and dataset are now live in the target Fabric workspace. GitHub Step Summary is written with the deployment results.
+      </div>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">✅ Final Success Criteria</div>
+      <ul class="criteria-list">
+        <li>Report visible in Fabric workspace</li>
+        <li>Dataset refreshable / queryable</li>
+        <li>GitHub Actions workflow shows green ✅</li>
+        <li>Step Summary displays deployed file list with IDs</li>
+      </ul>
+    </div>
+    <div class="step-section">
+      <div class="step-section-label">⚡ What Happens Next</div>
+      <ul class="prereq-list">
+        <li>To promote to TEST: push to <code>test</code> branch or use workflow_dispatch</li>
+        <li>To promote to PROD: use workflow_dispatch with <code>environment: prod</code></li>
+        <li>Existing report subscriptions/bookmarks are preserved (CreateOrOverwrite)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div style="text-align:center; color:var(--cp-text-muted); margin-top:32px; font-size:0.8rem; padding-top:16px; border-top:1px solid var(--cp-border);">
+    Generated from live Fabric API data • Repo: <code>sautalwar/fabric-cicd-github</code> • SPN: <code>github-actions-fabric-cicd</code>
+  </div>
+</div>
+</body>
+</html>
