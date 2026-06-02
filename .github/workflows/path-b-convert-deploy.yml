@@ -1,0 +1,233 @@
+name: Convert PBIX to PBIP & Deploy via Git Sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pbix-source/**/*.pbix'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  convert:
+    name: Convert PBIX to PBIP
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download pbi-tools.core
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/pbi-tools/pbi-tools/releases/latest"
+          $asset = $release.assets | Where-Object { $_.name -match "pbi-tools\.core.*win-x64.*\.zip$" } | Select-Object -First 1
+
+          if (-not $asset) {
+            # Fallback: look for any standalone/core zip
+            $asset = $release.assets | Where-Object { $_.name -match "pbi-tools.*\.zip$" } | Select-Object -First 1
+          }
+
+          if (-not $asset) {
+            Write-Error "Could not find pbi-tools.core download asset"
+            exit 1
+          }
+
+          Write-Host "📥 Downloading: $($asset.name)"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "pbi-tools.zip"
+          Expand-Archive -Path "pbi-tools.zip" -DestinationPath ".\pbi-tools" -Force
+          Write-Host "✅ pbi-tools extracted to .\pbi-tools"
+
+          # Add to PATH
+          $pbiToolsPath = (Get-ChildItem -Path ".\pbi-tools" -Recurse -Filter "pbi-tools.core.exe" | Select-Object -First 1).DirectoryName
+          if (-not $pbiToolsPath) {
+            $pbiToolsPath = ".\pbi-tools"
+          }
+          echo "$pbiToolsPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "📍 Added to PATH: $pbiToolsPath"
+
+      - name: Convert PBIX to PBIP
+        shell: pwsh
+        run: |
+          $pbixFiles = Get-ChildItem -Path "pbix-source" -Filter "*.pbix" -Recurse
+          $convertedCount = 0
+
+          if ($pbixFiles.Count -eq 0) {
+            Write-Host "⚠️ No .pbix files found in pbix-source/"
+            exit 0
+          }
+
+          foreach ($file in $pbixFiles) {
+            $reportName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+            $outPath = "pbip-output/$reportName"
+
+            Write-Host ""
+            Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            Write-Host "📄 Converting: $($file.Name)"
+            Write-Host "   Output: $outPath"
+            Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+            # Create output directory
+            New-Item -ItemType Directory -Force -Path $outPath | Out-Null
+
+            # Run pbi-tools extract
+            pbi-tools.core extract $file.FullName -outPath $outPath
+
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "✅ Converted: $reportName"
+              $convertedCount++
+            } else {
+              Write-Error "❌ Failed to convert: $($file.Name)"
+              exit 1
+            }
+          }
+
+          Write-Host ""
+          Write-Host "🎉 Converted $convertedCount file(s) successfully"
+
+      - name: Commit converted PBIP files
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add pbip-output/
+
+          if git diff --staged --quiet; then
+            echo "ℹ️  No changes to commit (PBIP output unchanged)"
+            echo "changes=false" >> $GITHUB_OUTPUT
+          else
+            CHANGED=$(git diff --staged --stat | tail -1)
+            git commit -m "chore: convert PBIX to PBIP format [skip ci]
+
+          Automated conversion via pbi-tools.core
+          Changes: $CHANGED"
+
+            git push
+            echo "✅ Committed and pushed PBIP files"
+            echo "changes=true" >> $GITHUB_OUTPUT
+          fi
+        id: commit
+
+  sync-to-fabric:
+    name: Sync to Fabric Workspace
+    needs: convert
+    runs-on: ubuntu-latest
+    if: needs.convert.result == 'success'
+
+    steps:
+      - name: Authenticate to Microsoft Entra ID
+        id: auth
+        run: |
+          TOKEN_RESPONSE=$(curl -s -X POST \
+            "https://login.microsoftonline.com/${{ secrets.AZURE_TENANT_ID }}/oauth2/v2.0/token" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "client_id=${{ secrets.AZURE_CLIENT_ID }}" \
+            -d "client_secret=${{ secrets.AZURE_CLIENT_SECRET }}" \
+            -d "scope=https://api.fabric.microsoft.com/.default" \
+            -d "grant_type=client_credentials")
+
+          ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
+
+          if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" == "null" ]; then
+            echo "❌ Failed to acquire Fabric access token"
+            echo "$TOKEN_RESPONSE" | jq '.error_description // .' 2>/dev/null
+            exit 1
+          fi
+
+          echo "✅ Fabric access token acquired"
+          echo "::add-mask::$ACCESS_TOKEN"
+          echo "token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Get latest commit hash
+        id: commit
+        run: |
+          # Get the latest commit on main after the convert job pushed
+          COMMIT_HASH=$(curl -s \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/commits/main" \
+            | jq -r '.sha')
+          echo "hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
+          echo "📌 Latest commit: $COMMIT_HASH"
+
+      - name: Trigger Fabric Git Sync
+        run: |
+          WORKSPACE_ID="${{ secrets.FABRIC_WORKSPACE_ID }}"
+          TOKEN="${{ steps.auth.outputs.token }}"
+
+          echo "🔄 Triggering Fabric Git sync for workspace: $WORKSPACE_ID"
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://api.fabric.microsoft.com/v1/workspaces/${WORKSPACE_ID}/git/updateFromGit" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "remoteCommitHash": "${{ steps.commit.outputs.hash }}",
+              "conflictResolution": {
+                "conflictResolutionType": "Workspace",
+                "conflictResolutionPolicy": "PreferRemote"
+              },
+              "options": {
+                "allowOverrideItems": true
+              }
+            }')
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 202 ]; then
+            echo "✅ Git sync triggered successfully (HTTP $HTTP_CODE)"
+
+            # If 202, extract operation URL for polling
+            if [ "$HTTP_CODE" -eq 202 ]; then
+              OPERATION_URL=$(echo "$BODY" | jq -r '.url // empty')
+              if [ -n "$OPERATION_URL" ]; then
+                echo "⏳ Long-running operation started. Polling..."
+
+                for i in $(seq 1 60); do
+                  sleep 10
+                  OP_RESPONSE=$(curl -s \
+                    -H "Authorization: Bearer $TOKEN" \
+                    "$OPERATION_URL")
+                  OP_STATUS=$(echo "$OP_RESPONSE" | jq -r '.status')
+
+                  case "$OP_STATUS" in
+                    "Succeeded"|"Completed")
+                      echo "✅ Fabric sync completed successfully"
+                      exit 0
+                      ;;
+                    "Failed")
+                      echo "❌ Fabric sync failed"
+                      echo "$OP_RESPONSE" | jq '.'
+                      exit 1
+                      ;;
+                    *)
+                      printf "   Poll %d/60 — Status: %s\r" "$i" "$OP_STATUS"
+                      ;;
+                  esac
+                done
+                echo "⏰ Timeout waiting for sync operation"
+                exit 2
+              fi
+            fi
+          else
+            echo "❌ Git sync failed with HTTP $HTTP_CODE"
+            echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
+            exit 1
+          fi
+
+      - name: Sync Summary
+        if: always()
+        run: |
+          echo "## 🔄 PBIP Convert & Sync Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Workspace:** ${{ secrets.FABRIC_WORKSPACE_ID }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit synced:** \`${{ steps.commit.outputs.hash }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
